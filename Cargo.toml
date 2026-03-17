@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/nostr-transport"]
+members = [".", "crates/nostr-transport", "crates/common"]
 
 [workspace.dependencies]
 nostr-sdk   = "0.34.0"
