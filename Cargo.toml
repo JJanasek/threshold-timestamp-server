@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "crates/nostr-transport"]
+
 [package]
 name = "mpc-timestamp-server"
 version = "0.1.0"
