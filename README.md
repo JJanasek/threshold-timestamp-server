@@ -18,4 +18,10 @@ A decentralized, trusted digital timestamping server built in Rust. This project
     cd threshold-timestamp-server
     cargo run
  ```
+ * cli functions
+ ```bash
+    cargo build -p mpc-cli
+    cargo run -p mpc-cli -- keygen --k 2 --n 3 --out ./my-keys
+ ```
+
 
