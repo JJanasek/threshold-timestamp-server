@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::fs;
 
 use common::{TimestampToken, CoordinatorConfig, SignerConfig};
-use frost_core::secp256k1::{generate_with_dealer, KeyPackageWrapper};
+use frost_core::secp256k1::generate_with_dealer;
 use frost_core::sha256;
 
 #[derive(Parser)]
@@ -66,18 +66,21 @@ async fn main() -> Result<()> {
                 port: 8000,
             };
             let coord_path = out.join("coordinator.toml");
-            fs::write(&coord_path, toml::to_string_pretty(&coord_config)?)?;
+            fs::write(&coord_path, toml::to_string_pretty(&coord_config)?)
+                .context("Failed to write coordinator config")?;
             println!("Wrote coordinator config to {:?}", coord_path);
 
             // Write signer configs
             for (i, share) in shares.iter().enumerate() {
+                // share.secret_share is already a hex string in the wrapper
                 let signer_config = SignerConfig {
-                    key_package: serde_json::to_string(share)?,
+                    key_package: share.secret_share.clone(), 
                     coordinator_npub: "replace_with_coordinator_npub".to_string(),
                     relay_urls: vec!["ws://localhost:8080".to_string()],
                 };
                 let path = out.join(format!("signer_{}.toml", i + 1));
-                fs::write(&path, toml::to_string_pretty(&signer_config)?)?;
+                fs::write(&path, toml::to_string_pretty(&signer_config)?)
+                    .context("Failed to write signer config")?;
                 println!("Wrote signer {} config to {:?}", i + 1, path);
             }
         }
@@ -92,10 +95,10 @@ async fn main() -> Result<()> {
             println!("Signature:    {}", token.signature);
             println!("Group PubKey: {}", token.group_public_key);
 
-            if token.verify().unwrap_or(false) {
-                 println!("\n[PASSED] Crypto Signature is VALID for this message.");
-            } else {
-                 println!("\n[FAILED] Crypto Signature is INVALID.");
+            match token.verify() {
+                 Ok(true) => println!("\n[PASSED] Crypto Signature is VALID for this message."),
+                 Ok(false) => println!("\n[FAILED] Crypto Signature is INVALID."),
+                 Err(e) => println!("\n[ERROR] Verification error: {}", e),
             }
         }
 
@@ -133,13 +136,15 @@ async fn main() -> Result<()> {
 
             // 2. Send to Coordinator
             let client = reqwest::Client::new();
-            let res = client.post(format!("{}/api/v1/timestamp", coordinator))
+            let res = client.post(format!("{}/timestamp", coordinator))
                 .json(&serde_json::json!({ "hash": file_hash }))
                 .send()
                 .await?;
             
-            if (!res.status().is_success()) {
+            // Removed extra parentheses
+            if !res.status().is_success() {
                 println!("Server error: {}", res.status());
+                println!("Body: {}", res.text().await?);
                 return Ok(());
             }
 
