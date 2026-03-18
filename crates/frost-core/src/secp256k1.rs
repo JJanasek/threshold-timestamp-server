@@ -101,7 +101,7 @@ impl ThresholdScheme for Secp256k1 {
             n as u16,
             k as u16,
             IdentifierList::Default,
-            &mut thread_rng(),
+            thread_rng(),
         )
         .map_err(|e| CryptoError::Frost(e.to_string()))?;
 
@@ -119,7 +119,7 @@ impl ThresholdScheme for Secp256k1 {
     }
 
     fn nonce_commitment(nonce: &Nonce) -> Commitment {
-        Commitment { identifier: nonce.identifier, inner: nonce.commitments.clone() }
+        Commitment { identifier: nonce.identifier, inner: nonce.commitments }
     }
 
     fn partial_sign(
@@ -130,7 +130,7 @@ impl ThresholdScheme for Secp256k1 {
         msg: &[u8; 32],
     ) -> Result<PartialSig, CryptoError> {
         let commitments_map: BTreeMap<frost::Identifier, SigningCommitments> =
-            commitments.iter().map(|c| (c.identifier, c.inner.clone())).collect();
+            commitments.iter().map(|c| (c.identifier, c.inner)).collect();
 
         let signing_package = SigningPackage::new(commitments_map, msg);
 
@@ -146,13 +146,14 @@ impl ThresholdScheme for Secp256k1 {
         pubkey: &GroupKey,
         msg: &[u8; 32],
     ) -> Result<FrostSignature, CryptoError> {
+
         let commitments_map: BTreeMap<frost::Identifier, SigningCommitments> =
-            commitments.iter().map(|c| (c.identifier, c.inner.clone())).collect();
+            commitments.iter().map(|c| (c.identifier, c.inner)).collect();
 
         let signing_package = SigningPackage::new(commitments_map, msg);
 
         let shares_map: BTreeMap<frost::Identifier, SignatureShare> =
-            partial_sigs.iter().map(|ps| (ps.identifier, ps.inner.clone())).collect();
+            partial_sigs.iter().map(|ps| (ps.identifier, ps.inner)).collect();
 
         let signature = frost::aggregate(&signing_package, &shares_map, &pubkey.0)
             .map_err(|e| CryptoError::Frost(e.to_string()))?;
