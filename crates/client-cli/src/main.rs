@@ -2,10 +2,10 @@ use clap::{Parser, Subcommand};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::fs;
-use sha2::{Digest, Sha256};
 
 use common::{TimestampToken, CoordinatorConfig, SignerConfig};
 use frost_core::secp256k1::{generate_with_dealer, KeyPackageWrapper};
+use frost_core::sha256;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -102,9 +102,7 @@ async fn main() -> Result<()> {
         Commands::Verify { file, token, coordinator: _ } => {
             // 1. Hash the file
             let file_bytes = fs::read(&file).context("Failed to read input file")?;
-            let mut hasher = Sha256::new();
-            hasher.update(&file_bytes);
-            let calculated_hash = hex::encode(hasher.finalize());
+            let calculated_hash = hex::encode(sha256(&file_bytes));
 
             // 2. Load Token
             let content = fs::read_to_string(token).context("Failed to read token file")?;
@@ -129,9 +127,7 @@ async fn main() -> Result<()> {
         Commands::Timestamp { file, coordinator } => {
             // 1. Hash file
             let file_bytes = fs::read(&file).context("Failed to read file")?;
-            let mut hasher = Sha256::new();
-            hasher.update(&file_bytes);
-            let file_hash = hex::encode(hasher.finalize());
+            let file_hash = hex::encode(sha256(&file_bytes));
 
             println!("Requesting timestamp for hash: {}", file_hash);
 
@@ -142,7 +138,7 @@ async fn main() -> Result<()> {
                 .send()
                 .await?;
             
-            if !res.status().is_success() {
+            if (!res.status().is_success()) {
                 println!("Server error: {}", res.status());
                 return Ok(());
             }
