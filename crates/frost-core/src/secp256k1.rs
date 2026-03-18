@@ -1,10 +1,6 @@
-//! [`ThresholdScheme`] for secp256k1-tr backed by the ZF FROST library.
-//!
 //! Ciphersuite: `FROST(secp256k1-tr, SHA-256)` — BIP-340 / Nostr compatible.
-//! <https://docs.rs/frost-secp256k1-tr>
 
 use std::collections::BTreeMap;
-
 use frost_secp256k1_tr::{
     self as frost,
     keys::{IdentifierList, KeyPackage, PublicKeyPackage},
@@ -13,56 +9,80 @@ use frost_secp256k1_tr::{
     Signature, SigningPackage,
 };
 use rand::thread_rng;
+use serde::{Deserialize, Serialize};
 
-use crate::crypto::{CryptoError, Secp256k1, ThresholdScheme};
+use crate::{CryptoError, ThresholdScheme}; 
+
+/// The Marker Struct
+pub struct Secp256k1;
+
+// -----------------------------------------------------------------------------
+// CLI Helpers (Moved here from lib.rs)
+// -----------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize)]
+pub struct KeyPackageWrapper {
+    pub identifier: String, // CHANGED from u16 to String to safely hold full Identifier
+    pub secret_share: String, 
+    pub public_key: String,   
+}
+
+pub fn generate_with_dealer(n: u16, k: u16) -> (String, Vec<KeyPackageWrapper>) {
+    let mut rng = thread_rng();
+    let (shares, pubkey_package) = frost::keys::generate_with_dealer(
+        n,
+        k,
+        IdentifierList::Default,
+        &mut rng,
+    ).expect("Keygen failed");
 
 
-/// Secret nonce pair for one signing session (never leave the node).
+    let group_pubkey_bytes = pubkey_package.verifying_key().serialize().expect("Pubkey serialization failed");
+    let group_pubkey = hex::encode(group_pubkey_bytes);
+
+    let packages = shares.into_iter().map(|(id, secret)| {
+        let key_package = frost::keys::KeyPackage::try_from(secret).unwrap();
+        let bytes = key_package.serialize().expect("Failed to serialize share");
+        
+        KeyPackageWrapper {
+            identifier: hex::encode(id.serialize()), 
+            secret_share: hex::encode(bytes),
+            public_key: group_pubkey.clone(),
+        }
+    }).collect();
+
+    (group_pubkey, packages)
+}
+
+// -----------------------------------------------------------------------------
+// Protocol Structs
+// -----------------------------------------------------------------------------
+
 pub struct Nonce {
     pub identifier: frost::Identifier,
     pub(crate) nonces: SigningNonces,
-    /// Pre-computed public half; extracted by [`nonce_commitment`].
     pub(crate) commitments: SigningCommitments,
 }
 
-/// Public nonce commitment broadcast to all participants in round 1.
 #[derive(Clone)]
 pub struct Commitment {
     pub identifier: frost::Identifier,
     pub(crate) inner: SigningCommitments,
 }
 
-impl AsRef<[u8]> for Commitment {
-    fn as_ref(&self) -> &[u8] {
-        todo!("wire serialisation — implement when HTTP transport is added")
-    }
-}
-
-/// One signer's partial signature share (round 2 output).
 pub struct PartialSig {
     pub identifier: frost::Identifier,
     pub(crate) inner: SignatureShare,
 }
 
-/// Aggregated BIP-340 Schnorr signature (64 bytes).
 pub struct FrostSignature(pub Signature);
 
-impl AsRef<[u8]> for FrostSignature {
-    fn as_ref(&self) -> &[u8] {
-        todo!("wire serialisation — implement when HTTP transport is added")
-    }
-}
-
-/// Group public key package (verifying key + per-signer verifying keys).
 #[derive(Clone)]
 pub struct GroupKey(pub PublicKeyPackage);
 
-impl AsRef<[u8]> for GroupKey {
-    fn as_ref(&self) -> &[u8] {
-        todo!("wire serialisation — implement when HTTP transport is added")
-    }
-}
-
+// -----------------------------------------------------------------------------
+// Trait Implementation
+// -----------------------------------------------------------------------------
 
 impl ThresholdScheme for Secp256k1 {
     type PublicKey        = GroupKey;
@@ -72,8 +92,6 @@ impl ThresholdScheme for Secp256k1 {
     type PartialSignature = PartialSig;
     type Signature        = FrostSignature;
 
-    /// Trusted dealer keygen via `frost::keys::generate_with_dealer`.
-    /// Each `SecretShare` is converted to a `KeyPackage` in place.
     fn generate_shares(n: u32, k: u32) -> Result<(Vec<KeyPackage>, GroupKey), CryptoError> {
         if k < 1 || k > n {
             return Err(CryptoError::InvalidThreshold { k, n });
@@ -87,7 +105,6 @@ impl ThresholdScheme for Secp256k1 {
         )
         .map_err(|e| CryptoError::Frost(e.to_string()))?;
 
-        // Convert SecretShare → KeyPackage for each participant.
         let key_packages = shares
             .into_values()
             .map(|s| KeyPackage::try_from(s).map_err(|e| CryptoError::Frost(e.to_string())))
@@ -96,19 +113,15 @@ impl ThresholdScheme for Secp256k1 {
         Ok((key_packages, GroupKey(pubkey_package)))
     }
 
-    /// Round 1: `frost::round1::commit` binds the nonce to the signing share.
     fn generate_nonce(share: &KeyPackage) -> Nonce {
         let (nonces, commitments) = frost::round1::commit(share.signing_share(), &mut thread_rng());
         Nonce { identifier: *share.identifier(), nonces, commitments }
     }
 
-    /// Extract the public commitment (safe to broadcast to coordinator).
     fn nonce_commitment(nonce: &Nonce) -> Commitment {
         Commitment { identifier: nonce.identifier, inner: nonce.commitments.clone() }
     }
 
-    /// Round 2: build a `SigningPackage` from collected commitments + message,
-    /// then call `frost::round2::sign`.
     fn partial_sign(
         share: &KeyPackage,
         nonce: &Nonce,
@@ -127,7 +140,6 @@ impl ThresholdScheme for Secp256k1 {
         Ok(PartialSig { identifier: nonce.identifier, inner: sig_share })
     }
 
-    /// Aggregation: reconstruct `SigningPackage`, then call `frost::aggregate`.
     fn aggregate(
         partial_sigs: &[PartialSig],
         commitments: &[Commitment],
@@ -148,7 +160,6 @@ impl ThresholdScheme for Secp256k1 {
         Ok(FrostSignature(signature))
     }
 
-    /// Verify against the group verifying key.
     fn verify(pubkey: &GroupKey, msg: &[u8; 32], sig: &FrostSignature) -> bool {
         pubkey.0.verifying_key().verify(msg, &sig.0).is_ok()
     }

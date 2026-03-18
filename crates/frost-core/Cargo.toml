@@ -1,0 +1,13 @@
+[package]
+name = "frost-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+frost-secp256k1-tr = { version = "2", features = ["serialization", "serde"] }
+rand = "0.8"
+sha2 = "0.10"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+hex = "0.4"

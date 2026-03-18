@@ -1,5 +1,11 @@
 [workspace]
-members = [".", "crates/nostr-transport"]
+members = [
+    ".", 
+    "crates/nostr-transport", 
+    "crates/common", 
+    "crates/frost-core", 
+    "crates/client-cli"
+]
 
 [workspace.dependencies]
 nostr-sdk   = "0.34.0"
