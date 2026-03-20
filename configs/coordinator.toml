@@ -1,0 +1,24 @@
+[coordinator]
+nsec = "nsec1lk73j3vlvngl9y2245w9hq0d0yxgaltlnvfldlaelr9l0jhwnx2qq9aq3y"
+http_host = "0.0.0.0"
+http_port = 8000
+
+[frost]
+k = 2
+n = 3
+public_key_package = "00230f8ab3030000000000000000000000000000000000000000000000000000000000000001029ad9e0ee1e179764b480091b74919f770c73831b49abffc93cf9bed4e96e89760000000000000000000000000000000000000000000000000000000000000002036f09109c1ab9e34b289482aa07a24ec4f58e3de31feb28baedbdac3b65c75271000000000000000000000000000000000000000000000000000000000000000303f12afa0bea0b312857416c64a3c01f70bbafd7106e448531b8bed0d025fc1df803a319cf1897501ce709e2095be2c0a7b46e66e8447083f4949fb3791a946c2272"
+
+[[signers]]
+npub = "npub1x3s6jwvdu97zakruxnul2nj88zgdwr4je0n3rzmde573hkpky4tst3z7gl"
+signer_id = 1
+
+[[signers]]
+npub = "npub1aj7ajg0tnxdsdgxhswzauehclkrp3cgmt6agfvezguhaaazuvz3qa8vhmn"
+signer_id = 2
+
+[[signers]]
+npub = "npub1fm6apklqdd3phwf9vyylql5gn7fqggc8zulceczjwt3anpdvv9ssed5lva"
+signer_id = 3
+
+[relays]
+urls = ["ws://relay:8080"]

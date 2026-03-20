@@ -16,6 +16,9 @@ use crate::{CryptoError, ThresholdScheme};
 /// The Marker Struct
 pub struct Secp256k1;
 
+// Re-export the frost crate so downstream crates (signer-node) can use its types.
+pub use frost_secp256k1_tr;
+
 // -----------------------------------------------------------------------------
 // CLI Helpers (Moved here from lib.rs)
 // -----------------------------------------------------------------------------
@@ -27,7 +30,35 @@ pub struct KeyPackageWrapper {
     pub public_key: String,   
 }
 
-pub fn generate_with_dealer(n: u16, k: u16) -> (String, Vec<KeyPackageWrapper>) {
+impl KeyPackageWrapper {
+    /// Deserialize the hex-encoded `secret_share` back into a live `KeyPackage`.
+    pub fn to_key_package(&self) -> Result<KeyPackage, CryptoError> {
+        let bytes = hex::decode(&self.secret_share)
+            .map_err(|_| CryptoError::InvalidEncoding)?;
+        KeyPackage::deserialize(&bytes)
+            .map_err(|e| CryptoError::Frost(format!("failed to deserialize KeyPackage: {e}")))
+    }
+
+    /// Extract the signer ID as a `u16` from the hex-encoded `identifier`.
+    pub fn to_identifier_u16(&self) -> Result<u16, CryptoError> {
+        let bytes = hex::decode(&self.identifier)
+            .map_err(|_| CryptoError::InvalidEncoding)?;
+        // Validate that the bytes are a valid Identifier.
+        let _id = frost::Identifier::deserialize(&bytes)
+            .map_err(|e| CryptoError::Frost(format!("failed to deserialize Identifier: {e}")))?;
+        // Identifiers created by IdentifierList::Default are 1..=n.
+        // The serialized form is a 32-byte big-endian Scalar; extract the low u16.
+        if bytes.len() >= 2 {
+            let lo = u16::from_be_bytes([bytes[bytes.len() - 2], bytes[bytes.len() - 1]]);
+            if lo > 0 {
+                return Ok(lo);
+            }
+        }
+        Err(CryptoError::Frost("cannot extract u16 signer id from identifier".into()))
+    }
+}
+
+pub fn generate_with_dealer(n: u16, k: u16) -> (String, String, Vec<KeyPackageWrapper>) {
     let mut rng = thread_rng();
     let (shares, pubkey_package) = frost::keys::generate_with_dealer(
         n,
@@ -36,22 +67,24 @@ pub fn generate_with_dealer(n: u16, k: u16) -> (String, Vec<KeyPackageWrapper>) 
         &mut rng,
     ).expect("Keygen failed");
 
-
     let group_pubkey_bytes = pubkey_package.verifying_key().serialize().expect("Pubkey serialization failed");
     let group_pubkey = hex::encode(group_pubkey_bytes);
+
+    let pubkey_package_bytes = pubkey_package.serialize().expect("PublicKeyPackage serialization failed");
+    let pubkey_package_hex = hex::encode(pubkey_package_bytes);
 
     let packages = shares.into_iter().map(|(id, secret)| {
         let key_package = frost::keys::KeyPackage::try_from(secret).unwrap();
         let bytes = key_package.serialize().expect("Failed to serialize share");
-        
+
         KeyPackageWrapper {
-            identifier: hex::encode(id.serialize()), 
+            identifier: hex::encode(id.serialize()),
             secret_share: hex::encode(bytes),
             public_key: group_pubkey.clone(),
         }
     }).collect();
 
-    (group_pubkey, packages)
+    (group_pubkey, pubkey_package_hex, packages)
 }
 
 // -----------------------------------------------------------------------------
@@ -64,15 +97,43 @@ pub struct Nonce {
     pub(crate) commitments: SigningCommitments,
 }
 
+impl Nonce {
+    /// Public accessor for the signing nonces (needed by `frost::round2::sign`).
+    pub fn signing_nonces(&self) -> &SigningNonces {
+        &self.nonces
+    }
+
+    /// Public accessor for the signing commitments.
+    pub fn signing_commitments(&self) -> &SigningCommitments {
+        &self.commitments
+    }
+}
+
 #[derive(Clone)]
 pub struct Commitment {
     pub identifier: frost::Identifier,
     pub(crate) inner: SigningCommitments,
 }
 
+impl Commitment {
+    /// Serialize the inner `SigningCommitments` to a `serde_json::Value`.
+    pub fn to_json(&self) -> Result<serde_json::Value, CryptoError> {
+        serde_json::to_value(&self.inner)
+            .map_err(|e| CryptoError::Frost(format!("failed to serialize commitment: {e}")))
+    }
+}
+
 pub struct PartialSig {
     pub identifier: frost::Identifier,
     pub(crate) inner: SignatureShare,
+}
+
+impl PartialSig {
+    /// Serialize the inner `SignatureShare` to a `serde_json::Value`.
+    pub fn to_json(&self) -> Result<serde_json::Value, CryptoError> {
+        serde_json::to_value(&self.inner)
+            .map_err(|e| CryptoError::Frost(format!("failed to serialize signature share: {e}")))
+    }
 }
 
 pub struct FrostSignature(pub Signature);

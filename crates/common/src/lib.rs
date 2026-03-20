@@ -101,12 +101,6 @@ pub struct SignerConfig {
     pub key_package: String, // JSON serialized KeyPackage (secret share)
     pub coordinator_npub: String, // To know which events to listen to
     pub relay_urls: Vec<String>,
+    pub nsec: Option<String>, // Nostr secret key (bech32); generated if absent
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CoordinatorConfig {
-    pub group_public_key: String, // Hex
-    pub relay_urls: Vec<String>,
-    pub signers_npubs: Vec<String>, // Trusted signers whitelist
-    pub port: u16,
-}

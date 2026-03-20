@@ -1,0 +1,30 @@
+[package]
+name = "signer-node"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "signer-node"
+path = "src/main.rs"
+
+[dependencies]
+# Path deps
+common = { path = "../common" }
+frost-core = { path = "../frost-core" }
+nostr-transport = { path = "../nostr-transport" }
+
+# Direct deps
+frost-secp256k1-tr = { version = "2", features = ["serialization", "serde"] }
+clap = { version = "4.4", features = ["derive"] }
+toml = "0.8"
+hex = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+
+# Workspace deps
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+nostr-sdk = { workspace = true }

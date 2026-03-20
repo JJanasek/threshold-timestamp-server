@@ -14,6 +14,8 @@ sha2 = "0.10"
 anyhow = "1.0"
 toml = "0.8" # Added this because you use toml::to_string_pretty
 
+nostr-sdk = { workspace = true }
+
 # PATH DEPENDENCIES MUST BE RELATIVE TO THIS FILE
 common = { path = "../common" }
 frost-core = { path = "../frost-core" }
