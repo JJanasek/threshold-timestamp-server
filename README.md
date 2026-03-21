@@ -73,9 +73,9 @@ This starts:
 | relay       | 8081  | Nostr relay           |
 | coordinator | 8000  | REST API              |
 | signer-1..3 | —     | Threshold signers     |
-| web-ui      | 3000  | Next.js web interface |
+| web-ui      | 3003  | Next.js web interface |
 
-Open http://localhost:3000 for the web UI, or use the API directly on http://localhost:8000.
+Open http://localhost:3003 for the web UI, or use the API directly on http://localhost:8000.
 
 ### 2b. Run Locally (development)
 
