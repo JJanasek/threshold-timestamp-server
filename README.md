@@ -1,5 +1,9 @@
 # Threshold Timestamp Server
 
+Quick overview
+
+[![Threshold Timestamp Server Overview](https://cdn.loom.com/sessions/thumbnails/a743109ace7f4591a8f09251d1934649-with-play.gif)](https://www.loom.com/share/a743109ace7f4591a8f09251d1934649)
+
 A decentralized digital timestamping service built in Rust. Uses **FROST threshold Schnorr signatures** (k-of-n) over the **Nostr** network to produce BIP-340-compatible timestamp tokens without any single party holding the signing key.
 
 ## Architecture
