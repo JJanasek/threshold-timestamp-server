@@ -66,9 +66,11 @@ impl TimestampToken {
     }
 
     /// Verify the validity of the timestamp using the group public key.
+    /// Only available on non-WASM targets (requires secp256k1 C library).
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn verify(&self) -> Result<bool, CommonError> {
         use secp256k1::{schnorr::Signature, XOnlyPublicKey};
-        
+
         // 1. Recompute the message hash that the servers supposedly signed
         let msg_hash = self.compute_message_hash()?;
         let msg = secp256k1::Message::from_digest_slice(&msg_hash)

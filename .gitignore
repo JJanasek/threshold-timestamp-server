@@ -1,2 +1,4 @@
 /target
 target/site/
+web-ui/node_modules/
+web-ui/.next/

@@ -1,0 +1,138 @@
+@import url("https://fonts.googleapis.com/css2?family=Kalam:wght@700&family=Patrick+Hand&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #fdf6e3;
+  --color-paper-dark: #f5e6c8;
+  --color-pencil: #4a4a4a;
+  --color-erased: #b8b8b8;
+  --color-marker-yellow: #fff176;
+  --color-marker-green: #a5d6a7;
+  --color-marker-red: #ef9a9a;
+  --color-marker-blue: #90caf9;
+  --color-pen: #1a1a2e;
+  --color-ink: #2c3e50;
+
+  --font-hand: "Patrick Hand", cursive;
+  --font-kalam: "Kalam", cursive;
+
+  --shadow-hard: 3px 3px 0px rgba(0, 0, 0, 0.2);
+  --shadow-hard-sm: 2px 2px 0px rgba(0, 0, 0, 0.15);
+  --shadow-hard-lg: 5px 5px 0px rgba(0, 0, 0, 0.25);
+}
+
+body {
+  font-family: var(--font-hand);
+  background-color: var(--color-paper);
+  background-image: radial-gradient(circle, #d5c5a1 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: var(--color-pencil);
+}
+
+@utility wobbly {
+  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  border: 2px solid var(--color-pencil);
+}
+
+@utility wobbly-md {
+  border-radius: 15px 255px 15px 225px / 225px 15px 255px 15px;
+  border: 2px solid var(--color-pencil);
+}
+
+@utility btn-hand {
+  font-family: var(--font-kalam);
+  font-weight: 700;
+  padding: 0.5rem 1.5rem;
+  background-color: var(--color-pen);
+  color: var(--color-paper);
+  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  border: 2px solid var(--color-pen);
+  box-shadow: var(--shadow-hard);
+  transition: transform 0.15s, box-shadow 0.15s;
+  cursor: pointer;
+
+  &:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: var(--shadow-hard-lg);
+  }
+
+  &:active {
+    transform: translate(1px, 1px);
+    box-shadow: var(--shadow-hard-sm);
+  }
+}
+
+@utility btn-hand-secondary {
+  font-family: var(--font-kalam);
+  font-weight: 700;
+  padding: 0.5rem 1.5rem;
+  background-color: var(--color-paper);
+  color: var(--color-pen);
+  border-radius: 15px 255px 15px 225px / 225px 15px 255px 15px;
+  border: 2px dashed var(--color-pencil);
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s, box-shadow 0.15s;
+  cursor: pointer;
+
+  &:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: var(--shadow-hard);
+  }
+}
+
+@utility tape-decoration {
+  position: relative;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%) rotate(-2deg);
+    width: 80px;
+    height: 20px;
+    background-color: rgba(255, 241, 118, 0.6);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+  }
+}
+
+@utility tack-decoration {
+  position: relative;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 12px;
+    height: 12px;
+    background: radial-gradient(circle, #e53935 40%, #b71c1c 100%);
+    border-radius: 50%;
+    box-shadow: 0 2px 3px rgba(0, 0, 0, 0.3);
+    z-index: 10;
+  }
+}
+
+@utility wavy-underline {
+  text-decoration: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: var(--color-marker-yellow);
+  text-underline-offset: 4px;
+}
+
+@utility dashed-divider {
+  border: none;
+  border-top: 2px dashed var(--color-erased);
+  margin: 1.5rem 0;
+}
+
+@utility notebook-lines {
+  background-image: repeating-linear-gradient(
+    transparent,
+    transparent 31px,
+    #d5c5a1 31px,
+    #d5c5a1 32px
+  );
+  line-height: 32px;
+}

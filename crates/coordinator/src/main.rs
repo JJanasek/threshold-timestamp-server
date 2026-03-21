@@ -82,6 +82,9 @@ async fn main() -> anyhow::Result<()> {
     // Spawn background event listener
     spawn_event_listener(state.clone());
 
+    // CORS layer (permissive for dev; tighten for production)
+    let cors = tower_http::cors::CorsLayer::permissive();
+
     // Build HTTP router
     let router = axum::Router::new()
         .route("/health", axum::routing::get(routes::health))
@@ -92,6 +95,7 @@ async fn main() -> anyhow::Result<()> {
             axum::routing::post(routes::post_timestamp),
         )
         .route("/api/v1/verify", axum::routing::post(routes::post_verify))
+        .layer(cors)
         .with_state(state);
 
     // Start server

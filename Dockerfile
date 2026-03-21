@@ -1,4 +1,4 @@
-FROM rust:1.85-bookworm AS builder
+FROM rust:1.90-bookworm AS builder
 WORKDIR /build
 COPY . .
 RUN cargo build --release -p coordinator -p signer-node

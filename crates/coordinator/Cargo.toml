@@ -20,6 +20,7 @@ nostr-transport = { path = "../nostr-transport" }
 # Direct deps
 frost-secp256k1-tr = { version = "2", features = ["serialization", "serde"] }
 axum = "0.7.5"
+tower-http = { version = "0.6", features = ["cors"] }
 dashmap = "5"
 clap = { version = "4.4", features = ["derive"] }
 toml = "0.8"

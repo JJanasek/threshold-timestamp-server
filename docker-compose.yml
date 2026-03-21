@@ -20,6 +20,15 @@ services:
       - relay
     restart: on-failure
 
+  web-ui:
+    build: ./web-ui
+    ports:
+      - "3001:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://coordinator:8000
+    depends_on:
+      - coordinator
+
   signer-1:
     build:
       context: .
