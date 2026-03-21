@@ -6,8 +6,10 @@ use dashmap::DashMap;
 use nostr_sdk::prelude::*;
 use nostr_sdk::ToBech32;
 use tokio::net::TcpListener;
+use tokio::sync::RwLock;
 
-use nostr_transport::filters::coordinator_filter;
+use common::event_client::EventEmitter;
+use nostr_transport::filters::{coordinator_filter, coordinator_dkg_filter};
 use nostr_transport::relay::NostrRelay;
 
 use coordinator::config::load_config;
@@ -49,8 +51,18 @@ async fn main() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to parse nsec: {e}"))?;
     tracing::info!(npub = %keys.public_key().to_bech32()?, "coordinator identity");
 
-    // Parse public key package
-    let public_key_package = public_key_package_from_hex(&config.frost.public_key_package)?;
+    // Parse public key package (optional -- absent before DKG)
+    let public_key_package = match &config.frost.public_key_package {
+        Some(hex_str) if !hex_str.is_empty() => {
+            let pkg = public_key_package_from_hex(hex_str)?;
+            tracing::info!("loaded existing public key package");
+            Some(pkg)
+        }
+        _ => {
+            tracing::info!("no public_key_package in config — DKG required before signing");
+            None
+        }
+    };
 
     // Connect to relays
     let relay = NostrRelay::new(keys.clone(), config.relays.urls.clone())
@@ -59,16 +71,24 @@ async fn main() -> anyhow::Result<()> {
     relay.connect().await;
     tracing::info!(relays = ?config.relays.urls, "connected to relays");
 
-    // Subscribe to coordinator-bound events (kinds 20002, 20004)
-    let filter = coordinator_filter(&keys.public_key(), None);
+    // Subscribe to coordinator-bound events (signing + DKG)
+    let signing_filter = coordinator_filter(&keys.public_key(), None);
+    let dkg_filter = coordinator_dkg_filter(&keys.public_key(), None);
     let _sub_id = relay
-        .subscribe(vec![filter])
+        .subscribe(vec![signing_filter, dkg_filter])
         .await
         .map_err(|e| anyhow::anyhow!("subscription failed: {e}"))?;
-    tracing::info!("subscribed to coordinator-bound Nostr events");
+    tracing::info!("subscribed to coordinator-bound Nostr events (signing + DKG)");
 
     // Build shared state
     let bind_addr = format!("{}:{}", config.coordinator.http_host, config.coordinator.http_port);
+    let event_emitter = EventEmitter::from_optional(
+        config.coordinator.collector_url.clone(),
+        "coordinator".to_string(),
+    );
+    if config.coordinator.collector_url.is_some() {
+        tracing::info!("event collector enabled");
+    }
     let state = Arc::new(AppState {
         config,
         relay,
@@ -76,7 +96,8 @@ async fn main() -> anyhow::Result<()> {
         sessions: DashMap::new(),
         serial_counter: AtomicU64::new(0),
         active_hashes: DashMap::new(),
-        public_key_package,
+        public_key_package: RwLock::new(public_key_package),
+        event_emitter,
     });
 
     // Spawn background event listener
@@ -95,6 +116,7 @@ async fn main() -> anyhow::Result<()> {
             axum::routing::post(routes::post_timestamp),
         )
         .route("/api/v1/verify", axum::routing::post(routes::post_verify))
+        .route("/api/v1/dkg", axum::routing::post(routes::post_dkg))
         .layer(cors)
         .with_state(state);
 

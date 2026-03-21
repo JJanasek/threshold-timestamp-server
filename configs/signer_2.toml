@@ -2,3 +2,4 @@ key_package = '{"identifier":"00000000000000000000000000000000000000000000000000
 coordinator_npub = "npub1duvgg793xqsh76esn32vada5evl35ce0jcls36aam0lt7952d48s3jwn59"
 relay_urls = ["ws://relay:8080"]
 nsec = "nsec1usnyl4jmla7chn6ftq88pctzfezwcra7cu64lqs0yek83jl933ls7cu4ah"
+collector_url = "http://collector:9000"

@@ -9,6 +9,7 @@ use serde_json::json;
 
 use common::TimestampToken;
 
+use crate::dkg;
 use crate::error::CoordinatorError;
 use crate::frost_bridge;
 use crate::session;
@@ -56,7 +57,13 @@ pub async fn get_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, CoordinatorError> {
     tracing::debug!("GET /api/v1/status");
-    let group_key = frost_bridge::verifying_key_to_x_only_hex(&state.public_key_package)?;
+    let pubkey_guard = state.public_key_package.read().await;
+    let group_key = match pubkey_guard.as_ref() {
+        Some(pkg) => frost_bridge::verifying_key_to_x_only_hex(pkg)?,
+        None => String::new(),
+    };
+    drop(pubkey_guard);
+
     let signers: Vec<StatusSigner> = state
         .config
         .signers
@@ -87,7 +94,13 @@ pub async fn get_pubkey(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, CoordinatorError> {
     tracing::info!("GET /api/v1/pubkey");
-    let group_key = frost_bridge::verifying_key_to_x_only_hex(&state.public_key_package)?;
+    let pubkey_guard = state.public_key_package.read().await;
+    let group_key = match pubkey_guard.as_ref() {
+        Some(pkg) => frost_bridge::verifying_key_to_x_only_hex(pkg)?,
+        None => String::new(),
+    };
+    drop(pubkey_guard);
+
     let coordinator_npub = state.keys.public_key().to_bech32().map_err(|e| {
         CoordinatorError::InternalError(format!("failed to encode npub: {e}"))
     })?;
@@ -100,11 +113,45 @@ pub async fn get_pubkey(
     })))
 }
 
+// -- DKG types ---------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct DkgResponse {
+    pub group_public_key: String,
+    pub success: bool,
+}
+
+pub async fn post_dkg(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<DkgResponse>, CoordinatorError> {
+    tracing::info!("POST /api/v1/dkg");
+
+    let outcome = dkg::run_dkg_session(state).await?;
+
+    Ok(Json(DkgResponse {
+        group_public_key: outcome.group_public_key,
+        success: true,
+    }))
+}
+
 pub async fn post_timestamp(
     State(state): State<Arc<AppState>>,
     Json(body): Json<TimestampRequest>,
 ) -> Result<Json<TimestampToken>, CoordinatorError> {
     tracing::info!(hash = %body.hash, "POST /api/v1/timestamp");
+
+    // Guard: check that DKG has been run
+    {
+        let pkg = state.public_key_package.read().await;
+        if pkg.is_none() {
+            return Err(CoordinatorError::NoDkgKeysYet);
+        }
+    }
+
+    state.event_emitter.emit(
+        None,
+        format!("timestamp request received for hash {}", body.hash),
+    );
 
     // Validate hash format: must be 64 hex chars (SHA-256)
     if body.hash.len() != 64 || hex::decode(&body.hash).is_err() {

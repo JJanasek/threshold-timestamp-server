@@ -103,10 +103,12 @@ async fn main() -> Result<()> {
             // Write signer configs
             for (i, share) in shares.iter().enumerate() {
                 let signer_config = SignerConfig {
-                    key_package: serde_json::to_string(share)?,
+                    key_package: Some(serde_json::to_string(share)?),
+                    signer_id: Some((i + 1) as u16),
                     coordinator_npub: coord_npub.clone(),
                     relay_urls: vec!["ws://localhost:8080".to_string()],
                     nsec: Some(signer_nsecs[i].clone()),
+                    collector_url: None,
                 };
                 let path = out.join(format!("signer_{}.toml", i + 1));
                 fs::write(&path, toml::to_string_pretty(&signer_config)?)?;

@@ -5,6 +5,19 @@ services:
     ports:
       - "8081:8080"
 
+  collector:
+    build:
+      context: .
+      target: collector
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./configs:/app/configs:ro
+    environment:
+      - RUST_LOG=collector=info
+    command: ["--config", "/app/configs/collector.toml"]
+    restart: on-failure
+
   coordinator:
     build:
       context: .
@@ -18,6 +31,7 @@ services:
     command: ["--config", "/app/configs/coordinator.toml"]
     depends_on:
       - relay
+      - collector
     restart: on-failure
 
   web-ui:
@@ -26,8 +40,10 @@ services:
       - "3003:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://coordinator:8000
+      - NEXT_PUBLIC_COLLECTOR_URL=http://collector:9000
     depends_on:
       - coordinator
+      - collector
 
   signer-1:
     build:
@@ -40,6 +56,7 @@ services:
     command: ["--config", "/app/configs/signer_1.toml"]
     depends_on:
       - relay
+      - collector
     restart: on-failure
 
   signer-2:
@@ -53,6 +70,7 @@ services:
     command: ["--config", "/app/configs/signer_2.toml"]
     depends_on:
       - relay
+      - collector
     restart: on-failure
 
   signer-3:
@@ -66,4 +84,5 @@ services:
     command: ["--config", "/app/configs/signer_3.toml"]
     depends_on:
       - relay
+      - collector
     restart: on-failure

@@ -2,6 +2,7 @@
 nsec = "nsec1lk73j3vlvngl9y2245w9hq0d0yxgaltlnvfldlaelr9l0jhwnx2qq9aq3y"
 http_host = "0.0.0.0"
 http_port = 8000
+collector_url = "http://collector:9000"
 
 [frost]
 k = 2

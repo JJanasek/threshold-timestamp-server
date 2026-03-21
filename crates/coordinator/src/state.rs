@@ -5,9 +5,10 @@ use dashmap::DashMap;
 use frost_secp256k1_tr::keys::PublicKeyPackage;
 use nostr_sdk::prelude::*;
 use nostr_sdk::RelayPoolNotification;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, RwLock};
 use uuid::Uuid;
 
+use common::event_client::EventEmitter;
 use nostr_transport::relay::NostrRelay;
 
 use crate::config::CoordinatorAppConfig;
@@ -28,7 +29,8 @@ pub struct AppState {
     pub sessions: DashMap<Uuid, SessionHandle>,
     pub serial_counter: AtomicU64,
     pub active_hashes: DashMap<String, Uuid>,
-    pub public_key_package: PublicKeyPackage,
+    pub public_key_package: RwLock<Option<PublicKeyPackage>>,
+    pub event_emitter: EventEmitter,
 }
 
 /// Extract session UUID from the "s" tag of a Nostr event.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getStatus, StatusResponse } from "@/lib/api";
+import { getStatus, postDkg, StatusResponse } from "@/lib/api";
 import StatusCard from "@/components/StatusCard";
 import SignerTable from "@/components/SignerTable";
 
@@ -9,6 +9,10 @@ export default function AdminPage() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [dkgStatus, setDkgStatus] = useState<"idle" | "running" | "success" | "error">("idle");
+  const [dkgError, setDkgError] = useState<string | null>(null);
+  const [dkgResult, setDkgResult] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,6 +33,20 @@ export default function AdminPage() {
       clearInterval(interval);
     };
   }, []);
+
+  async function handleDkg() {
+    if (!confirm("This will run Distributed Key Generation. All signers must be online. Continue?")) return;
+    setDkgStatus("running");
+    setDkgError(null);
+    try {
+      const result = await postDkg();
+      setDkgResult(result.group_public_key);
+      setDkgStatus("success");
+    } catch (e) {
+      setDkgError((e as Error).message);
+      setDkgStatus("error");
+    }
+  }
 
   return (
     <div>
@@ -66,11 +84,44 @@ export default function AdminPage() {
           </div>
 
           <div className="wobbly-md bg-paper p-6 shadow-hard mb-8">
+            <h2 className="font-[family-name:var(--font-kalam)] text-xl font-bold mb-3">
+              Key Ceremony (DKG)
+            </h2>
+            <p className="text-sm text-erased mb-4">
+              Generate a new group key using Distributed Key Generation. All signer nodes must be online.
+            </p>
+            {!status.group_public_key && dkgStatus !== "success" && (
+              <p className="text-sm text-red-700 font-bold mb-4">
+                No group key configured &mdash; run DKG to initialize the system.
+              </p>
+            )}
+            <button
+              onClick={handleDkg}
+              disabled={dkgStatus === "running"}
+              className="btn-hand"
+            >
+              {dkgStatus === "running"
+                ? "Running DKG..."
+                : status.group_public_key
+                  ? "Regenerate Group Key"
+                  : "Run DKG"}
+            </button>
+            {dkgStatus === "success" && (
+              <p className="mt-3 text-sm text-green-700">
+                DKG complete! New group key: <span className="font-mono break-all">{dkgResult}</span>
+              </p>
+            )}
+            {dkgStatus === "error" && (
+              <p className="mt-3 text-sm text-red-700">DKG failed: {dkgError}</p>
+            )}
+          </div>
+
+          <div className="wobbly-md bg-paper p-6 shadow-hard mb-8">
             <h2 className="font-[family-name:var(--font-kalam)] text-xl font-bold mb-1">
               Group Public Key
             </h2>
             <p className="font-mono text-xs break-all bg-paper-dark/50 p-3 wobbly">
-              {status.group_public_key}
+              {status.group_public_key || "(not set — run DKG)"}
             </p>
           </div>
 

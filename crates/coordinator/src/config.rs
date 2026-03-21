@@ -15,6 +15,7 @@ pub struct CoordinatorSection {
     pub nsec: String,
     pub http_host: String,
     pub http_port: u16,
+    pub collector_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -22,7 +23,8 @@ pub struct FrostSection {
     pub k: u16,
     pub n: u16,
     /// Hex-encoded serialized `frost_secp256k1_tr::keys::PublicKeyPackage`.
-    pub public_key_package: String,
+    /// Optional: absent before DKG has been run.
+    pub public_key_package: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

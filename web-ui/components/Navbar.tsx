@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { StampIcon, ShieldCheckIcon, SettingsIcon } from "./Icons";
+import { StampIcon, ShieldCheckIcon, SettingsIcon, ListIcon } from "./Icons";
 
 const links = [
   { href: "/", label: "Sign", icon: StampIcon },
   { href: "/verify", label: "Verify", icon: ShieldCheckIcon },
   { href: "/admin", label: "Admin", icon: SettingsIcon },
+  { href: "/events", label: "Events", icon: ListIcon },
 ];
 
 export default function Navbar() {

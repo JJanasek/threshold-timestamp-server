@@ -1,6 +1,9 @@
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+const COLLECTOR_URL =
+  process.env.NEXT_PUBLIC_COLLECTOR_URL || "http://localhost:9000";
+
 export interface TimestampToken {
   serial_number: number;
   timestamp: number;
@@ -70,4 +73,39 @@ export function postVerify(token: TimestampToken): Promise<VerifyResponse> {
     method: "POST",
     body: JSON.stringify({ token }),
   });
+}
+
+export interface DkgResponse {
+  group_public_key: string;
+  success: boolean;
+}
+
+export function postDkg(): Promise<DkgResponse> {
+  return apiFetch("/api/v1/dkg", { method: "POST" });
+}
+
+// -- Collector API ------------------------------------------------------------
+
+export interface CollectorEvent {
+  node_name: string;
+  session_id: string | null;
+  message: string;
+  timestamp: number;
+}
+
+export async function getEvents(params?: {
+  node_name?: string;
+  session_id?: string;
+}): Promise<CollectorEvent[]> {
+  const query = new URLSearchParams();
+  if (params?.node_name) query.set("node_name", params.node_name);
+  if (params?.session_id) query.set("session_id", params.session_id);
+  const qs = query.toString();
+  const url = `${COLLECTOR_URL}/api/v1/events${qs ? `?${qs}` : ""}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Collector error ${res.status}: ${text}`);
+  }
+  return res.json();
 }

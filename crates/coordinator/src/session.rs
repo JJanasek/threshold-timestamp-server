@@ -45,6 +45,13 @@ pub async fn run_signing_session(
 
     let result = run_session_inner(state.clone(), session_id, &document_hash_hex).await;
 
+    if let Err(ref e) = result {
+        state.event_emitter.emit(
+            Some(session_id.to_string()),
+            format!("session failed: {}", e),
+        );
+    }
+
     // Always cleanup
     state.active_hashes.remove(&document_hash_hex);
     state.sessions.remove(&session_id);
@@ -91,6 +98,11 @@ async fn run_session_inner(
         "starting signing session"
     );
 
+    state.event_emitter.emit(
+        Some(session_id.to_string()),
+        format!("session started, selected signers: {:?}", selected_ids),
+    );
+
     // 4. Register session channel
     let (tx, mut rx) = mpsc::channel(100);
     state.sessions.insert(
@@ -131,6 +143,11 @@ async fn run_session_inner(
         "round 1 commitments collected"
     );
 
+    state.event_emitter.emit(
+        Some(session_id.to_string()),
+        format!("round 1 commitments collected ({}ms)", round1_start.elapsed().as_millis()),
+    );
+
     // 7. Build SigningPackage
     let signing_package = frost::SigningPackage::new(commitments.clone(), &message_hash);
 
@@ -166,23 +183,37 @@ async fn run_session_inner(
         "round 2 shares collected"
     );
 
+    state.event_emitter.emit(
+        Some(session_id.to_string()),
+        format!("round 2 shares collected ({}ms)", round2_start.elapsed().as_millis()),
+    );
+
     // 10. Aggregate
     tracing::info!(session_id = %session_id, "aggregating signature shares");
-    let signature = frost::aggregate(&signing_package, &shares, &state.public_key_package)
+    let pubkey_pkg_guard = state.public_key_package.read().await;
+    let pubkey_pkg = pubkey_pkg_guard.as_ref()
+        .ok_or(CoordinatorError::NoDkgKeysYet)?;
+
+    let signature = frost::aggregate(&signing_package, &shares, pubkey_pkg)
         .map_err(|e| CoordinatorError::FrostError(format!("aggregation failed: {e}")))?;
 
     // 11. Verify aggregated signature
-    state
-        .public_key_package
+    pubkey_pkg
         .verifying_key()
         .verify(&message_hash, &signature)
         .map_err(|e| CoordinatorError::FrostError(format!("signature verification failed: {e}")))?;
 
     tracing::info!(session_id = %session_id, "signature aggregated and verified");
 
+    state.event_emitter.emit(
+        Some(session_id.to_string()),
+        "signature aggregated and verified".to_string(),
+    );
+
     // 12. Fill token
     token.signature = frost_bridge::signature_to_hex(&signature)?;
-    token.group_public_key = frost_bridge::verifying_key_to_x_only_hex(&state.public_key_package)?;
+    token.group_public_key = frost_bridge::verifying_key_to_x_only_hex(pubkey_pkg)?;
+    drop(pubkey_pkg_guard);
 
     // 13. Publish token as Nostr kind:1 event
     tracing::info!(session_id = %session_id, serial = serial_number, "publishing timestamp token to Nostr");
@@ -196,6 +227,11 @@ async fn run_session_inner(
         .map_err(|e| CoordinatorError::NostrError(format!("publish token: {e}")))?;
 
     tracing::info!(session_id = %session_id, serial = serial_number, "timestamp token published to Nostr");
+
+    state.event_emitter.emit(
+        Some(session_id.to_string()),
+        format!("timestamp token published (serial={})", serial_number),
+    );
 
     Ok(token)
 }
