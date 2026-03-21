@@ -58,6 +58,7 @@ cargo run -p mpc-cli -- keygen --k 2 --n 3 --out ./configs
 ```
 
 This generates:
+
 - `configs/coordinator.toml` — coordinator config with FROST public key package and signer list
 - `configs/signer_1.toml`, `configs/signer_2.toml`, `configs/signer_3.toml` — each with a unique key share
 
@@ -68,12 +69,12 @@ docker compose up --build
 ```
 
 This starts:
-| Service      | Port  | Description           |
+| Service | Port | Description |
 |-------------|-------|-----------------------|
-| relay       | 8081  | Nostr relay           |
-| coordinator | 8000  | REST API              |
-| signer-1..3 | —     | Threshold signers     |
-| web-ui      | 3003  | Next.js web interface |
+| relay | 8081 | Nostr relay |
+| coordinator | 8000 | REST API |
+| signer-1..3 | — | Threshold signers |
+| web-ui | 3003 | Next.js web interface |
 
 Open http://localhost:3003 for the web UI, or use the API directly on http://localhost:8000.
 
@@ -102,7 +103,7 @@ npm install
 npm run dev
 ```
 
-The web UI runs on http://localhost:3000 and the coordinator API on http://localhost:8000.
+The web UI runs on http://localhost:3003 and the coordinator API on http://localhost:8000.
 
 ## CLI Usage
 
@@ -142,23 +143,23 @@ Prints token fields (serial, timestamp, hash, signature, public key) and verifie
 cargo run -p mpc-cli -- keygen --k 2 --n 3 --out ./configs
 ```
 
-| Flag    | Default    | Description                |
-|---------|-----------|----------------------------|
-| `--k`   | 2         | Signing threshold          |
-| `--n`   | 3         | Total number of signers    |
+| Flag    | Default     | Description                  |
+| ------- | ----------- | ---------------------------- |
+| `--k`   | 2           | Signing threshold            |
+| `--n`   | 3           | Total number of signers      |
 | `--out` | `./configs` | Output directory for configs |
 
 ## REST API
 
 Base URL: `http://localhost:8000`
 
-| Method | Endpoint             | Description                      |
-|--------|---------------------|----------------------------------|
-| GET    | `/health`           | Health check                     |
-| GET    | `/api/v1/status`    | Coordinator status, signer list  |
-| GET    | `/api/v1/pubkey`    | Group public key and parameters  |
-| POST   | `/api/v1/timestamp` | Request a timestamp signature    |
-| POST   | `/api/v1/verify`    | Verify a timestamp token         |
+| Method | Endpoint            | Description                     |
+| ------ | ------------------- | ------------------------------- |
+| GET    | `/health`           | Health check                    |
+| GET    | `/api/v1/status`    | Coordinator status, signer list |
+| GET    | `/api/v1/pubkey`    | Group public key and parameters |
+| POST   | `/api/v1/timestamp` | Request a timestamp signature   |
+| POST   | `/api/v1/verify`    | Verify a timestamp token        |
 
 ### POST /api/v1/timestamp
 
