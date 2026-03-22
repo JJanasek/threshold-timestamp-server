@@ -1,7 +1,10 @@
 use nostr_sdk::prelude::*;
 use uuid::Uuid;
 
-use crate::{KIND_PARTIAL_SIG, KIND_ROUND1_COMMITMENT, KIND_ROUND2_PAYLOAD, KIND_SESSION_ANNOUNCE};
+use crate::{
+    KIND_PARTIAL_SIG, KIND_ROUND1_COMMITMENT, KIND_ROUND2_PAYLOAD, KIND_SESSION_ANNOUNCE,
+    KIND_DKG_ANNOUNCE, KIND_DKG_ROUND1, KIND_DKG_ROUND1_BROADCAST, KIND_DKG_ROUND2, KIND_DKG_RESULT,
+};
 
 /// Filter for events that a **coordinator** needs to receive:
 /// - Round 1 commitments (20002) from signers
@@ -43,6 +46,48 @@ pub fn signer_filter(signer_pubkey: &PublicKey) -> Filter {
             SingleLetterTag::lowercase(Alphabet::P),
             [signer_pubkey.to_string()],
         )
+}
+
+/// Filter for DKG events that a **signer** needs to receive:
+/// - DKG announcements (20005) from the coordinator
+/// - DKG round 1 broadcasts (20007) from the coordinator
+/// - DKG round 2 packages (20008) from peer signers
+pub fn signer_dkg_filter(signer_pubkey: &PublicKey) -> Filter {
+    Filter::new()
+        .kinds([
+            Kind::from(KIND_DKG_ANNOUNCE),
+            Kind::from(KIND_DKG_ROUND1_BROADCAST),
+            Kind::from(KIND_DKG_ROUND2),
+        ])
+        .custom_tag(
+            SingleLetterTag::lowercase(Alphabet::P),
+            [signer_pubkey.to_string()],
+        )
+}
+
+/// Filter for DKG responses that the **coordinator** needs to receive:
+/// - DKG round 1 packages (20006) from signers
+/// - DKG result confirmations (20009) from signers
+pub fn coordinator_dkg_filter(
+    coordinator_pubkey: &PublicKey,
+    session_id: Option<Uuid>,
+) -> Filter {
+    let mut f = Filter::new()
+        .kinds([
+            Kind::from(KIND_DKG_ROUND1),
+            Kind::from(KIND_DKG_RESULT),
+        ])
+        .custom_tag(
+            SingleLetterTag::lowercase(Alphabet::P),
+            [coordinator_pubkey.to_string()],
+        );
+    if let Some(sid) = session_id {
+        f = f.custom_tag(
+            SingleLetterTag::lowercase(Alphabet::S),
+            [sid.to_string()],
+        );
+    }
+    f
 }
 
 #[cfg(test)]

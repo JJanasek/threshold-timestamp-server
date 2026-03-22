@@ -5,7 +5,8 @@ use crate::encrypt::{decrypt_payload, encrypt_payload, EncryptError};
 use crate::types::*;
 use crate::{
     KIND_PARTIAL_SIG, KIND_ROUND1_COMMITMENT, KIND_ROUND2_PAYLOAD, KIND_SESSION_ANNOUNCE,
-    KIND_TIMESTAMP_TOKEN,
+    KIND_TIMESTAMP_TOKEN, KIND_DKG_ANNOUNCE, KIND_DKG_ROUND1, KIND_DKG_ROUND1_BROADCAST,
+    KIND_DKG_ROUND2, KIND_DKG_RESULT,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -104,6 +105,90 @@ pub fn build_timestamp_token(content: &str) -> EventBuilder {
 }
 
 // ---------------------------------------------------------------------------
+// DKG Builders
+// ---------------------------------------------------------------------------
+
+pub fn build_dkg_announce(
+    sender_keys: &Keys,
+    recipient_pubkey: &PublicKey,
+    payload: &DkgAnnounce,
+) -> Result<EventBuilder, EventError> {
+    let encrypted = encrypt_payload(sender_keys, recipient_pubkey, payload)?;
+    Ok(EventBuilder::new(
+        Kind::from(KIND_DKG_ANNOUNCE),
+        encrypted,
+        [
+            recipient_tag(recipient_pubkey),
+            session_tag(&payload.session_id),
+        ],
+    ))
+}
+
+pub fn build_dkg_round1(
+    sender_keys: &Keys,
+    coordinator_pubkey: &PublicKey,
+    payload: &DkgRound1,
+) -> Result<EventBuilder, EventError> {
+    let encrypted = encrypt_payload(sender_keys, coordinator_pubkey, payload)?;
+    Ok(EventBuilder::new(
+        Kind::from(KIND_DKG_ROUND1),
+        encrypted,
+        [
+            recipient_tag(coordinator_pubkey),
+            session_tag(&payload.session_id),
+        ],
+    ))
+}
+
+pub fn build_dkg_round1_broadcast(
+    sender_keys: &Keys,
+    recipient_pubkey: &PublicKey,
+    payload: &DkgRound1Broadcast,
+) -> Result<EventBuilder, EventError> {
+    let encrypted = encrypt_payload(sender_keys, recipient_pubkey, payload)?;
+    Ok(EventBuilder::new(
+        Kind::from(KIND_DKG_ROUND1_BROADCAST),
+        encrypted,
+        [
+            recipient_tag(recipient_pubkey),
+            session_tag(&payload.session_id),
+        ],
+    ))
+}
+
+pub fn build_dkg_round2(
+    sender_keys: &Keys,
+    recipient_pubkey: &PublicKey,
+    payload: &DkgRound2,
+) -> Result<EventBuilder, EventError> {
+    let encrypted = encrypt_payload(sender_keys, recipient_pubkey, payload)?;
+    Ok(EventBuilder::new(
+        Kind::from(KIND_DKG_ROUND2),
+        encrypted,
+        [
+            recipient_tag(recipient_pubkey),
+            session_tag(&payload.session_id),
+        ],
+    ))
+}
+
+pub fn build_dkg_result(
+    sender_keys: &Keys,
+    coordinator_pubkey: &PublicKey,
+    payload: &DkgResult,
+) -> Result<EventBuilder, EventError> {
+    let encrypted = encrypt_payload(sender_keys, coordinator_pubkey, payload)?;
+    Ok(EventBuilder::new(
+        Kind::from(KIND_DKG_RESULT),
+        encrypted,
+        [
+            recipient_tag(coordinator_pubkey),
+            session_tag(&payload.session_id),
+        ],
+    ))
+}
+
+// ---------------------------------------------------------------------------
 // Parsers
 // ---------------------------------------------------------------------------
 
@@ -144,6 +229,50 @@ pub fn parse_partial_signature(
     receiver_keys: &Keys,
 ) -> Result<PartialSignature, EventError> {
     check_kind(event, KIND_PARTIAL_SIG)?;
+    Ok(decrypt_payload(receiver_keys, &event.author(), event.content())?)
+}
+
+// ---------------------------------------------------------------------------
+// DKG Parsers
+// ---------------------------------------------------------------------------
+
+pub fn parse_dkg_announce(
+    event: &Event,
+    receiver_keys: &Keys,
+) -> Result<DkgAnnounce, EventError> {
+    check_kind(event, KIND_DKG_ANNOUNCE)?;
+    Ok(decrypt_payload(receiver_keys, &event.author(), event.content())?)
+}
+
+pub fn parse_dkg_round1(
+    event: &Event,
+    receiver_keys: &Keys,
+) -> Result<DkgRound1, EventError> {
+    check_kind(event, KIND_DKG_ROUND1)?;
+    Ok(decrypt_payload(receiver_keys, &event.author(), event.content())?)
+}
+
+pub fn parse_dkg_round1_broadcast(
+    event: &Event,
+    receiver_keys: &Keys,
+) -> Result<DkgRound1Broadcast, EventError> {
+    check_kind(event, KIND_DKG_ROUND1_BROADCAST)?;
+    Ok(decrypt_payload(receiver_keys, &event.author(), event.content())?)
+}
+
+pub fn parse_dkg_round2(
+    event: &Event,
+    receiver_keys: &Keys,
+) -> Result<DkgRound2, EventError> {
+    check_kind(event, KIND_DKG_ROUND2)?;
+    Ok(decrypt_payload(receiver_keys, &event.author(), event.content())?)
+}
+
+pub fn parse_dkg_result(
+    event: &Event,
+    receiver_keys: &Keys,
+) -> Result<DkgResult, EventError> {
+    check_kind(event, KIND_DKG_RESULT)?;
     Ok(decrypt_payload(receiver_keys, &event.author(), event.content())?)
 }
 

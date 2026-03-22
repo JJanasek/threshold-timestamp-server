@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -27,6 +29,53 @@ pub struct PartialSignature {
     pub session_id: Uuid,
     pub signer_id: u16,
     pub signature_share: serde_json::Value,
+}
+
+// ---------------------------------------------------------------------------
+// DKG Message Types
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DkgParticipant {
+    pub signer_id: u16,
+    pub npub: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DkgAnnounce {
+    pub session_id: Uuid,
+    pub k: u16,
+    pub n: u16,
+    pub participants: Vec<DkgParticipant>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DkgRound1 {
+    pub session_id: Uuid,
+    pub signer_id: u16,
+    pub package: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DkgRound1Broadcast {
+    pub session_id: Uuid,
+    pub packages: BTreeMap<u16, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DkgRound2 {
+    pub session_id: Uuid,
+    pub sender_id: u16,
+    pub package: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DkgResult {
+    pub session_id: Uuid,
+    pub signer_id: u16,
+    pub group_pubkey_hash: String,
+    /// Hex-encoded serialized PublicKeyPackage (all signers produce the same one).
+    pub public_key_package: String,
 }
 
 #[cfg(test)]
@@ -79,5 +128,72 @@ mod tests {
         let json = serde_json::to_string(&ps).unwrap();
         let back: PartialSignature = serde_json::from_str(&json).unwrap();
         assert_eq!(ps, back);
+    }
+
+    #[test]
+    fn dkg_announce_round_trip() {
+        let da = DkgAnnounce {
+            session_id: Uuid::new_v4(),
+            k: 2,
+            n: 3,
+            participants: vec![
+                DkgParticipant { signer_id: 1, npub: "npub1abc".into() },
+                DkgParticipant { signer_id: 2, npub: "npub1def".into() },
+            ],
+        };
+        let json = serde_json::to_string(&da).unwrap();
+        let back: DkgAnnounce = serde_json::from_str(&json).unwrap();
+        assert_eq!(da, back);
+    }
+
+    #[test]
+    fn dkg_round1_round_trip() {
+        let r1 = DkgRound1 {
+            session_id: Uuid::new_v4(),
+            signer_id: 1,
+            package: serde_json::json!({"commitment": "aabb"}),
+        };
+        let json = serde_json::to_string(&r1).unwrap();
+        let back: DkgRound1 = serde_json::from_str(&json).unwrap();
+        assert_eq!(r1, back);
+    }
+
+    #[test]
+    fn dkg_round1_broadcast_round_trip() {
+        let mut packages = BTreeMap::new();
+        packages.insert(1u16, serde_json::json!({"pkg": "data1"}));
+        packages.insert(2u16, serde_json::json!({"pkg": "data2"}));
+        let rb = DkgRound1Broadcast {
+            session_id: Uuid::new_v4(),
+            packages,
+        };
+        let json = serde_json::to_string(&rb).unwrap();
+        let back: DkgRound1Broadcast = serde_json::from_str(&json).unwrap();
+        assert_eq!(rb, back);
+    }
+
+    #[test]
+    fn dkg_round2_round_trip() {
+        let r2 = DkgRound2 {
+            session_id: Uuid::new_v4(),
+            sender_id: 1,
+            package: serde_json::json!({"share": "ccdd"}),
+        };
+        let json = serde_json::to_string(&r2).unwrap();
+        let back: DkgRound2 = serde_json::from_str(&json).unwrap();
+        assert_eq!(r2, back);
+    }
+
+    #[test]
+    fn dkg_result_round_trip() {
+        let dr = DkgResult {
+            session_id: Uuid::new_v4(),
+            signer_id: 1,
+            group_pubkey_hash: "deadbeef".into(),
+            public_key_package: "aabbccdd".into(),
+        };
+        let json = serde_json::to_string(&dr).unwrap();
+        let back: DkgResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(dr, back);
     }
 }

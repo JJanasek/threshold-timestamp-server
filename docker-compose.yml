@@ -1,0 +1,88 @@
+services:
+  relay:
+    image: scsibug/nostr-rs-relay:latest
+    platform: linux/amd64
+    ports:
+      - "8081:8080"
+
+  collector:
+    build:
+      context: .
+      target: collector
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./configs:/app/configs:ro
+    environment:
+      - RUST_LOG=collector=info
+    command: ["--config", "/app/configs/collector.toml"]
+    restart: on-failure
+
+  coordinator:
+    build:
+      context: .
+      target: coordinator
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./configs:/app/configs:ro
+    environment:
+      - RUST_LOG=coordinator=info
+    command: ["--config", "/app/configs/coordinator.toml"]
+    depends_on:
+      - relay
+      - collector
+    restart: on-failure
+
+  web-ui:
+    build: ./web-ui
+    ports:
+      - "3003:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://coordinator:8000
+      - NEXT_PUBLIC_COLLECTOR_URL=http://collector:9000
+    depends_on:
+      - coordinator
+      - collector
+
+  signer-1:
+    build:
+      context: .
+      target: signer-node
+    volumes:
+      - ./configs:/app/configs:ro
+    environment:
+      - RUST_LOG=info
+    command: ["--config", "/app/configs/signer_1.toml"]
+    depends_on:
+      - relay
+      - collector
+    restart: on-failure
+
+  signer-2:
+    build:
+      context: .
+      target: signer-node
+    volumes:
+      - ./configs:/app/configs:ro
+    environment:
+      - RUST_LOG=info
+    command: ["--config", "/app/configs/signer_2.toml"]
+    depends_on:
+      - relay
+      - collector
+    restart: on-failure
+
+  signer-3:
+    build:
+      context: .
+      target: signer-node
+    volumes:
+      - ./configs:/app/configs:ro
+    environment:
+      - RUST_LOG=info
+    command: ["--config", "/app/configs/signer_3.toml"]
+    depends_on:
+      - relay
+      - collector
+    restart: on-failure

@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+#[cfg(feature = "collector-client")]
+pub mod event_client;
+
 // -----------------------------------------------------------------------------
 // Constants (Nostr Kinds & Tags)
 // -----------------------------------------------------------------------------
@@ -16,6 +19,18 @@ pub const KIND_ROUND2_PAYLOAD: u16 = 20003;
 pub const KIND_PARTIAL_SIG: u16 = 20004;
 /// Regular event: published timestamp token (NIP-01 kind 1 note).
 pub const KIND_TIMESTAMP_TOKEN: u16 = 1;
+
+// DKG protocol event kinds
+/// Ephemeral event: coordinator announces a DKG session to signers.
+pub const KIND_DKG_ANNOUNCE: u16 = 20005;
+/// Ephemeral event: signer sends DKG round 1 package to coordinator.
+pub const KIND_DKG_ROUND1: u16 = 20006;
+/// Ephemeral event: coordinator broadcasts all round 1 packages to signers.
+pub const KIND_DKG_ROUND1_BROADCAST: u16 = 20007;
+/// Ephemeral event: signer sends DKG round 2 package to another signer (peer-to-peer).
+pub const KIND_DKG_ROUND2: u16 = 20008;
+/// Ephemeral event: signer sends DKG result confirmation to coordinator.
+pub const KIND_DKG_RESULT: u16 = 20009;
 
 /// Single-letter tag used for session ID filtering (relay-compatible).
 pub const TAG_SESSION: &str = "s";
@@ -66,9 +81,11 @@ impl TimestampToken {
     }
 
     /// Verify the validity of the timestamp using the group public key.
+    /// Only available on non-WASM targets (requires secp256k1 C library).
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn verify(&self) -> Result<bool, CommonError> {
         use secp256k1::{schnorr::Signature, XOnlyPublicKey};
-        
+
         // 1. Recompute the message hash that the servers supposedly signed
         let msg_hash = self.compute_message_hash()?;
         let msg = secp256k1::Message::from_digest_slice(&msg_hash)
@@ -93,20 +110,29 @@ impl TimestampToken {
 }
 
 // -----------------------------------------------------------------------------
+// Collector Event
+// -----------------------------------------------------------------------------
+
+/// An audit event sent to the collector service.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollectorEvent {
+    pub node_name: String,
+    pub session_id: Option<String>,
+    pub message: String,
+    pub timestamp: u64,
+}
+
+// -----------------------------------------------------------------------------
 // Configuration
 // -----------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignerConfig {
-    pub key_package: String, // JSON serialized KeyPackage (secret share)
-    pub coordinator_npub: String, // To know which events to listen to
+    pub key_package: Option<String>, // JSON serialized KeyPackage (secret share); None before DKG
+    pub signer_id: Option<u16>,      // Assigned during DKG; derived from key_package if absent
+    pub coordinator_npub: String,    // To know which events to listen to
     pub relay_urls: Vec<String>,
+    pub nsec: Option<String>,        // Nostr secret key (bech32); generated if absent
+    pub collector_url: Option<String>, // URL of the event collector service
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CoordinatorConfig {
-    pub group_public_key: String, // Hex
-    pub relay_urls: Vec<String>,
-    pub signers_npubs: Vec<String>, // Trusted signers whitelist
-    pub port: u16,
-}

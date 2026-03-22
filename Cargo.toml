@@ -1,10 +1,13 @@
 [workspace]
 members = [
-    ".", 
-    "crates/nostr-transport", 
-    "crates/common", 
-    "crates/frost-core", 
-    "crates/client-cli"
+    ".",
+    "crates/nostr-transport",
+    "crates/common",
+    "crates/frost-core",
+    "crates/client-cli",
+    "crates/coordinator",
+    "crates/signer-node",
+    "crates/collector",
 ]
 
 [workspace.dependencies]
