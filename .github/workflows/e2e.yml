@@ -68,12 +68,13 @@ jobs:
           # -------------------------------------------------------
           echo " Requesting timestamp..."
           if ! ./target/release/mpc-cli timestamp test_doc.txt --coordinator http://localhost:8000; then
-             echo "timestamp command failed"
+             echo "❌ timestamp command failed"
              exit 1
           fi
           
-          if [ ! -f "test_doc.txt.tst" ]; then
+          if [ ! -f "test_doc.tst" ]; then
             echo "Error: Token file was not created!"
+            ls -la # Debugging: list files to see what WAS created
             exit 1
           fi
 
@@ -81,7 +82,7 @@ jobs:
           # 4. VERIFY: Check valid signature
           # -------------------------------------------------------
           echo " Verifying token..."
-          OUTPUT=$(./target/release/mpc-cli verify test_doc.txt test_doc.txt.tst --coordinator http://localhost:8000)
+          OUTPUT=$(./target/release/mpc-cli verify test_doc.txt test_doc.tst --coordinator http://localhost:8000)
           echo "Verify Output: $OUTPUT"
           
           if [[ "$OUTPUT" != *"SUCCESS"* ]] && [[ "$OUTPUT" != *"VALID"* ]]; then
@@ -96,8 +97,7 @@ jobs:
           echo " Modifying file..."
           echo "This is CORRUPTED data" > test_doc.txt
           
-          # We expect this to fail or return "INVALID", so we OR with true to not crash script
-          OUTPUT_BAD=$(./target/release/mpc-cli verify test_doc.txt test_doc.txt.tst --coordinator http://localhost:8000 || true)
+          OUTPUT_BAD=$(./target/release/mpc-cli verify test_doc.txt test_doc.tst --coordinator http://localhost:8000 || true)
           echo "Tamper Output: $OUTPUT_BAD"
           
           if [[ "$OUTPUT_BAD" == *"SUCCESS"* ]] || [[ "$OUTPUT_BAD" == *"VALID"* ]]; then
