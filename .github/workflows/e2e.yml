@@ -1,0 +1,109 @@
+name: e2e tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  e2e-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Setup Rust
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # 2. Build Binaries
+      - name: Build All Binaries
+        run: cargo build --release --workspace
+
+      # 3. Start Nostr Relay (Background Service)
+      - name: Start Nostr Relay
+        run: |
+          docker run -d -p 8080:8080 --name relay scsibug/nostr-rs-relay
+          sleep 5 # Wait for relay to boot
+
+      # 4. Generate Keys
+      - name: Generate Keys (k=2, n=3)
+        run: |
+          ./target/release/mpc-cli keygen --k 2 --n 3 --out ./configs
+
+      # 5. Run the E2E Script
+      - name: Run Test Script
+        shell: bash
+        run: |
+          # -------------------------------------------------------
+          # Helper: Function to clean up background processes on exit
+          # -------------------------------------------------------
+          cleanup() {
+            echo "Stopping processes..."
+            kill $(jobs -p) 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          # -------------------------------------------------------
+          # 1. Start Servers
+          # -------------------------------------------------------
+          # Coordinator
+          echo " Starting Coordinator..."
+          ./target/release/coordinator --config configs/coordinator.toml &
+          PID_COORD=$!
+          sleep 2 # Let web server bind port
+
+          # Signers
+          echo " Starting Signers..."
+          ./target/release/signer-node --config configs/signer_1.toml &
+          ./target/release/signer-node --config configs/signer_2.toml &
+          ./target/release/signer-node --config configs/signer_3.toml &
+          sleep 5 # Let them connect to relay
+
+          # -------------------------------------------------------
+          # 2. Create Dummy File
+          # -------------------------------------------------------
+          echo "This is important data" > test_doc.txt
+
+          # -------------------------------------------------------
+          # 3. EXECUTE: Request Timestamp
+          # -------------------------------------------------------
+          echo " Requesting timestamp..."
+          if ! ./target/release/mpc-cli timestamp test_doc.txt --coordinator http://localhost:8000; then
+             echo "❌ timestamp command failed"
+             exit 1
+          fi
+          
+          if [ ! -f "test_doc.tst" ]; then
+            echo "Error: Token file was not created!"
+            ls -la # Debugging: list files to see what WAS created
+            exit 1
+          fi
+
+          # -------------------------------------------------------
+          # 4. VERIFY: Check valid signature
+          # -------------------------------------------------------
+          echo " Verifying token..."
+          OUTPUT=$(./target/release/mpc-cli verify test_doc.txt test_doc.tst --coordinator http://localhost:8000)
+          echo "Verify Output: $OUTPUT"
+          
+          if [[ "$OUTPUT" != *"SUCCESS"* ]] && [[ "$OUTPUT" != *"VALID"* ]]; then
+             echo "Error: Verification failed."
+             exit 1
+          fi
+          echo "Happy Path Passed"
+
+          # -------------------------------------------------------
+          # 5. TEST: Tamper Evidence
+          # -------------------------------------------------------
+          echo " Modifying file..."
+          echo "This is CORRUPTED data" > test_doc.txt
+          
+          OUTPUT_BAD=$(./target/release/mpc-cli verify test_doc.txt test_doc.tst --coordinator http://localhost:8000 || true)
+          echo "Tamper Output: $OUTPUT_BAD"
+          
+          if [[ "$OUTPUT_BAD" == *"SUCCESS"* ]] || [[ "$OUTPUT_BAD" == *"VALID"* ]]; then
+             echo "Error: Tampered file was accepted as valid!"
+             exit 1
+          fi
+          echo "Tamper Check Passed"
+          
+          exit 0
