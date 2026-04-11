@@ -2,3 +2,8 @@
 target/site/
 web-ui/node_modules/
 web-ui/.next/
+my-keys/
+
+# Ignore generated configs but keep examples
+/configs/
+!/configs/examples/

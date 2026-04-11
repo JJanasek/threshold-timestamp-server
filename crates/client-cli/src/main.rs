@@ -25,6 +25,12 @@ enum Commands {
         n: u16,
         #[arg(long, default_value = "./configs")]
         out: PathBuf,
+        /// Nostr relay WebSocket URL written into all configs
+        #[arg(long, default_value = "ws://localhost:8080")]
+        relay: String,
+        /// Collector service URL written into all configs (optional)
+        #[arg(long)]
+        collector: Option<String>,
     },
     /// Request a timestamp for a file
     Timestamp {
@@ -44,6 +50,11 @@ enum Commands {
     Inspect {
         token: PathBuf,
     },
+    /// Print the coordinator's group public key in hex and bech32
+    Pubkey {
+        #[arg(long, default_value = "http://localhost:8000")]
+        coordinator: String,
+    },
 }
 
 #[tokio::main]
@@ -51,7 +62,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Keygen { k, n, out } => {
+        Commands::Keygen { k, n, out, relay, collector } => {
             println!("Generating {} shares with threshold {}...", n, k);
             fs::create_dir_all(&out)?;
 
@@ -88,12 +99,17 @@ async fn main() -> Result<()> {
                 ));
             }
 
+            let collector_line = match &collector {
+                Some(url) => format!("\ncollector_url = \"{}\"\n", url),
+                None => String::new(),
+            };
+
             let coord_toml = format!(
-                "[coordinator]\nnsec = \"{}\"\nhttp_host = \"0.0.0.0\"\nhttp_port = 8000\n\n\
+                "[coordinator]\nnsec = \"{}\"\nhttp_host = \"0.0.0.0\"\nhttp_port = 8000{}\n\
                  [frost]\nk = {}\nn = {}\npublic_key_package = \"{}\"\n\
                  {}\n\
-                 [relays]\nurls = [\"ws://localhost:8080\"]\n",
-                coord_nsec, k, n, pubkey_package_hex, signers_toml
+                 [relays]\nurls = [\"{}\"]\n",
+                coord_nsec, collector_line, k, n, pubkey_package_hex, signers_toml, relay
             );
 
             let coord_path = out.join("coordinator.toml");
@@ -106,9 +122,9 @@ async fn main() -> Result<()> {
                     key_package: Some(serde_json::to_string(share)?),
                     signer_id: Some((i + 1) as u16),
                     coordinator_npub: coord_npub.clone(),
-                    relay_urls: vec!["ws://localhost:8080".to_string()],
+                    relay_urls: vec![relay.clone()],
                     nsec: Some(signer_nsecs[i].clone()),
-                    collector_url: None,
+                    collector_url: collector.clone(),
                 };
                 let path = out.join(format!("signer_{}.toml", i + 1));
                 fs::write(&path, toml::to_string_pretty(&signer_config)?)?;
@@ -156,6 +172,28 @@ async fn main() -> Result<()> {
                 Ok(false) => println!("[FAILED] Invalid cryptographic signature."),
                 Err(e) => println!("[ERROR] Verification error: {}", e),
             }
+        }
+
+        Commands::Pubkey { coordinator } => {
+            let client = reqwest::Client::new();
+            let res = client.get(format!("{}/api/v1/pubkey", coordinator))
+                .send()
+                .await?;
+
+            if !res.status().is_success() {
+                println!("Server error: {}", res.status());
+                return Ok(());
+            }
+
+            let body: serde_json::Value = res.json().await?;
+            let hex_key = body["group_public_key"].as_str().unwrap_or("unknown");
+            let npub = body["coordinator_npub"].as_str().unwrap_or("unknown");
+            let k = body["k"].as_u64().unwrap_or(0);
+            let n = body["n"].as_u64().unwrap_or(0);
+
+            println!("Group Public Key (hex):    {}", hex_key);
+            println!("Coordinator npub (bech32): {}", npub);
+            println!("Threshold: {}/{}", k, n);
         }
 
         Commands::Timestamp { file, coordinator } => {

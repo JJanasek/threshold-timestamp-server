@@ -1,4 +1,14 @@
 services:
+  keygen:
+    build:
+      context: .
+      target: keygen
+    volumes:
+      - ./configs:/app/configs
+    command: ["keygen", "--k", "2", "--n", "3", "--out", "/app/configs", "--relay", "ws://relay:8080", "--collector", "http://collector:9000"]
+    profiles:
+      - keygen
+
   relay:
     image: scsibug/nostr-rs-relay:latest
     platform: linux/amd64
