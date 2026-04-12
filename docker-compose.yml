@@ -14,6 +14,12 @@ services:
     platform: linux/amd64
     ports:
       - "8081:8080"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
 
   collector:
     build:
@@ -26,6 +32,12 @@ services:
     environment:
       - RUST_LOG=collector=info
     command: ["--config", "/app/configs/collector.toml"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     restart: on-failure
 
   coordinator:
@@ -39,9 +51,17 @@ services:
     environment:
       - RUST_LOG=coordinator=info
     command: ["--config", "/app/configs/coordinator.toml"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     depends_on:
-      - relay
-      - collector
+      relay:
+        condition: service_healthy
+      collector:
+        condition: service_healthy
     restart: on-failure
 
   web-ui:
@@ -52,8 +72,10 @@ services:
       - NEXT_PUBLIC_API_URL=http://coordinator:8000
       - NEXT_PUBLIC_COLLECTOR_URL=http://collector:9000
     depends_on:
-      - coordinator
-      - collector
+      coordinator:
+        condition: service_healthy
+      collector:
+        condition: service_healthy
 
   signer-1:
     build:
@@ -65,8 +87,10 @@ services:
       - RUST_LOG=info
     command: ["--config", "/app/configs/signer_1.toml"]
     depends_on:
-      - relay
-      - collector
+      relay:
+        condition: service_healthy
+      collector:
+        condition: service_healthy
     restart: on-failure
 
   signer-2:
@@ -79,8 +103,10 @@ services:
       - RUST_LOG=info
     command: ["--config", "/app/configs/signer_2.toml"]
     depends_on:
-      - relay
-      - collector
+      relay:
+        condition: service_healthy
+      collector:
+        condition: service_healthy
     restart: on-failure
 
   signer-3:
@@ -93,6 +119,8 @@ services:
       - RUST_LOG=info
     command: ["--config", "/app/configs/signer_3.toml"]
     depends_on:
-      - relay
-      - collector
+      relay:
+        condition: service_healthy
+      collector:
+        condition: service_healthy
     restart: on-failure
