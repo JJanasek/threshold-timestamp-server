@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use frost_secp256k1_tr::keys::KeyPackage;
@@ -9,9 +10,15 @@ use tokio::sync::RwLock;
 
 use common::event_client::EventEmitter;
 use common::{
+    TimestampToken,
     KIND_ROUND2_PAYLOAD, KIND_SESSION_ANNOUNCE,
     KIND_DKG_ANNOUNCE, KIND_DKG_ROUND1_BROADCAST, KIND_DKG_ROUND2,
 };
+
+/// Maximum allowed drift between the coordinator's announced timestamp and the
+/// signer's local clock. Requests outside this window are silently rejected to
+/// prevent a malicious coordinator from back- or post-dating tokens.
+const MAX_CLOCK_DRIFT_SECS: i64 = 60;
 use frost_core::secp256k1::{
     Secp256k1, Nonce,
     dkg_part1, dkg_part2, dkg_part3,
@@ -150,6 +157,50 @@ pub async fn run_event_loop(
 // Signing handlers
 // ---------------------------------------------------------------------------
 
+/// Validates a SessionAnnounce's pre-image fields and recomputes the canonical
+/// message hash the signer will commit to. Returns the 32-byte hash on success
+/// or a human-readable rejection reason on failure.
+///
+/// Checks performed:
+/// 1. `file_hash` is exactly 64 hex characters.
+/// 2. `timestamp` is within ±`max_drift_secs` of `now_secs`.
+/// 3. The canonical message hash is derived via `TimestampToken::compute_message_hash()`.
+///
+/// Split out as a pure function so it can be unit-tested without mocking Nostr
+/// events, relays, or clocks.
+fn validate_and_recompute_message(
+    serial_number: u64,
+    timestamp: u64,
+    file_hash: &str,
+    now_secs: u64,
+    max_drift_secs: i64,
+) -> std::result::Result<[u8; 32], String> {
+    if file_hash.len() != 64 || hex::decode(file_hash).is_err() {
+        return Err("file_hash is not a 64-char hex string".to_string());
+    }
+
+    let drift = now_secs as i64 - timestamp as i64;
+    if drift.abs() > max_drift_secs {
+        return Err(format!(
+            "timestamp drift {}s exceeds {}s limit",
+            drift, max_drift_secs
+        ));
+    }
+
+    // Reuse the client-side canonical hash so signer, coordinator and
+    // verifier all agree on exactly which bytes get signed.
+    let preimage = TimestampToken {
+        serial_number,
+        timestamp,
+        file_hash: file_hash.to_string(),
+        signature: String::new(),
+        group_public_key: String::new(),
+    };
+    preimage
+        .compute_message_hash()
+        .map_err(|e| format!("failed to recompute message hash: {}", e))
+}
+
 async fn handle_session_announce(
     relay: &NostrRelay,
     event: &Event,
@@ -165,7 +216,9 @@ async fn handle_session_announce(
 
     tracing::debug!(
         session_id = %announce.session_id,
-        message = %announce.message,
+        serial = announce.serial_number,
+        timestamp = announce.timestamp,
+        file_hash = %announce.file_hash,
         k = announce.k,
         n = announce.n,
         "decrypted SessionAnnounce"
@@ -176,11 +229,50 @@ async fn handle_session_announce(
         "session announce received".to_string(),
     );
 
+    // --- Signer-side policy checks ------------------------------------------
+    //
+    // The coordinator is not trusted to dictate the message; we recompute the
+    // hash ourselves from the pre-image and validate the embedded timestamp
+    // against our local clock. This protects against back-/post-dated tokens
+    // and against signers being tricked into signing arbitrary 32-byte values.
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let expected_msg = match validate_and_recompute_message(
+        announce.serial_number,
+        announce.timestamp,
+        &announce.file_hash,
+        now_secs,
+        MAX_CLOCK_DRIFT_SECS,
+    ) {
+        Ok(m) => m,
+        Err(reason) => {
+            tracing::warn!(
+                session_id = %announce.session_id,
+                reason = %reason,
+                "rejecting session announce"
+            );
+            emitter.emit(
+                Some(announce.session_id.to_string()),
+                format!("rejected: {}", reason),
+            );
+            return Ok(());
+        }
+    };
+
     // Interactive mode: ask user for approval
     if interactive {
+        let drift = now_secs as i64 - announce.timestamp as i64;
         eprintln!(
-            "\n--- Signing request ---\n  Session: {}\n  Message: {}\n  Threshold: {}/{}\nApprove? [y/N] ",
-            announce.session_id, announce.message, announce.k, announce.n
+            "\n--- Signing request ---\n  Session: {}\n  Serial:  {}\n  Time:    {} (drift {}s)\n  Doc:     {}\n  Threshold: {}/{}\nApprove? [y/N] ",
+            announce.session_id,
+            announce.serial_number,
+            announce.timestamp,
+            drift,
+            announce.file_hash,
+            announce.k,
+            announce.n
         );
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
@@ -198,8 +290,13 @@ async fn handle_session_announce(
         .to_json()
         .map_err(|e| anyhow::anyhow!("failed to serialize commitment: {e}"))?;
 
-    // Store nonce BEFORE sending commitment (prevent race with Round2)
-    if !nonce_map.insert(announce.session_id, nonce).await {
+    // Store nonce BEFORE sending commitment (prevent race with Round2).
+    // The expected message hash is bound to the nonce so Round 2 can verify
+    // the SigningPackage carries exactly what we committed to.
+    if !nonce_map
+        .insert(announce.session_id, nonce, expected_msg)
+        .await
+    {
         tracing::warn!(session_id = %announce.session_id, "duplicate session, ignoring");
         return Ok(());
     }
@@ -254,9 +351,10 @@ async fn handle_round2_payload(
         "round 2 payload received".to_string(),
     );
 
-    // Retrieve the stored nonce (single-use)
-    let nonce = match nonce_map.take(&round2.session_id).await {
-        Some(n) => n,
+    // Retrieve the stored nonce and the message hash we committed to in Round 1
+    // (single-use: a second take() for the same session returns None).
+    let (nonce, expected_msg) = match nonce_map.take(&round2.session_id).await {
+        Some(entry) => entry,
         None => {
             tracing::warn!(
                 session_id = %round2.session_id,
@@ -273,6 +371,17 @@ async fn handle_round2_payload(
     let signing_package: frost_secp256k1_tr::SigningPackage =
         serde_json::from_value(round2.signing_package.clone())
             .context("failed to deserialize SigningPackage")?;
+
+    // Cross-check: the SigningPackage must carry the exact same message hash
+    // that was announced in Round 1. A malicious coordinator could otherwise
+    // swap the message between rounds.
+    if signing_package.message().as_slice() != expected_msg.as_slice() {
+        tracing::warn!(
+            session_id = %round2.session_id,
+            "rejecting Round2: SigningPackage message does not match Round1 announcement"
+        );
+        return Ok(());
+    }
 
     // Compute partial signature
     tracing::debug!(session_id = %round2.session_id, "computing partial signature");
@@ -630,4 +739,83 @@ async fn handle_dkg_round2_package(
     state.reset();
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests for signer-side policy checks
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const VALID_HASH: &str =
+        "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+    const NOW: u64 = 1_700_000_000;
+
+    #[test]
+    fn accepts_timestamp_within_drift_window() {
+        let out = validate_and_recompute_message(1, NOW, VALID_HASH, NOW, 60);
+        assert!(out.is_ok(), "expected OK, got: {:?}", out);
+        let msg = out.unwrap();
+        // Canonical hash must be deterministic for the same pre-image.
+        let again = validate_and_recompute_message(1, NOW, VALID_HASH, NOW, 60).unwrap();
+        assert_eq!(msg, again);
+    }
+
+    #[test]
+    fn accepts_timestamp_at_boundary() {
+        // exactly +60s and -60s from "now" must still be accepted.
+        assert!(validate_and_recompute_message(1, NOW + 60, VALID_HASH, NOW, 60).is_ok());
+        assert!(validate_and_recompute_message(1, NOW - 60, VALID_HASH, NOW, 60).is_ok());
+    }
+
+    #[test]
+    fn rejects_backdated_timestamp() {
+        // One hour in the past must be rejected.
+        let err = validate_and_recompute_message(1, NOW - 3600, VALID_HASH, NOW, 60)
+            .unwrap_err();
+        assert!(err.contains("drift"), "unexpected error: {}", err);
+    }
+
+    #[test]
+    fn rejects_postdated_timestamp() {
+        // Five minutes in the future must be rejected.
+        let err = validate_and_recompute_message(1, NOW + 300, VALID_HASH, NOW, 60)
+            .unwrap_err();
+        assert!(err.contains("drift"), "unexpected error: {}", err);
+    }
+
+    #[test]
+    fn rejects_bad_file_hash_length() {
+        let short = "abcd";
+        let err = validate_and_recompute_message(1, NOW, short, NOW, 60).unwrap_err();
+        assert!(err.contains("64-char"), "unexpected error: {}", err);
+    }
+
+    #[test]
+    fn rejects_non_hex_file_hash() {
+        let non_hex = "z".repeat(64);
+        let err =
+            validate_and_recompute_message(1, NOW, &non_hex, NOW, 60).unwrap_err();
+        assert!(err.contains("hex"), "unexpected error: {}", err);
+    }
+
+    #[test]
+    fn recomputed_hash_matches_client_side_verify() {
+        // The signer's recomputed hash must equal what a TimestampToken client
+        // (e.g. the CLI) computes for the same pre-image. If these ever drift
+        // apart, tokens would fail verification.
+        let signer_hash =
+            validate_and_recompute_message(42, NOW, VALID_HASH, NOW, 60).unwrap();
+        let client_token = TimestampToken {
+            serial_number: 42,
+            timestamp: NOW,
+            file_hash: VALID_HASH.to_string(),
+            signature: String::new(),
+            group_public_key: String::new(),
+        };
+        let client_hash = client_token.compute_message_hash().unwrap();
+        assert_eq!(signer_hash, client_hash);
+    }
 }

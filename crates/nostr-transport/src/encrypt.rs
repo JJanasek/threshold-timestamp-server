@@ -53,7 +53,9 @@ mod tests {
 
         let original = SessionAnnounce {
             session_id: Uuid::new_v4(),
-            message: "hello FROST".into(),
+            serial_number: 7,
+            timestamp: 1_700_000_000,
+            file_hash: "a".repeat(64),
             k: 2,
             n: 3,
         };
@@ -61,8 +63,8 @@ mod tests {
         let ciphertext =
             encrypt_payload(&sender, &receiver.public_key(), &original).unwrap();
 
-        // Ciphertext should not contain the plaintext
-        assert!(!ciphertext.contains("hello FROST"));
+        // Ciphertext should not contain the plaintext fields
+        assert!(!ciphertext.contains(&original.file_hash));
 
         let decrypted: SessionAnnounce =
             decrypt_payload(&receiver, &sender.public_key(), &ciphertext).unwrap();
@@ -78,7 +80,9 @@ mod tests {
 
         let original = SessionAnnounce {
             session_id: Uuid::new_v4(),
-            message: "secret".into(),
+            serial_number: 8,
+            timestamp: 1_700_000_000,
+            file_hash: "b".repeat(64),
             k: 2,
             n: 3,
         };
@@ -99,7 +103,9 @@ mod tests {
 
         let payload = SessionAnnounce {
             session_id: Uuid::new_v4(),
-            message: "test".into(),
+            serial_number: 9,
+            timestamp: 1_700_000_000,
+            file_hash: "c".repeat(64),
             k: 1,
             n: 1,
         };

@@ -6,7 +6,13 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SessionAnnounce {
     pub session_id: Uuid,
-    pub message: String,
+    /// Monotonic serial number assigned by the coordinator.
+    pub serial_number: u64,
+    /// Unix timestamp (seconds) at which the coordinator opened the session.
+    /// Signers validate this is within their configured drift window.
+    pub timestamp: u64,
+    /// Hex-encoded SHA-256 of the document being timestamped (64 hex chars).
+    pub file_hash: String,
     pub k: usize,
     pub n: usize,
 }
@@ -86,7 +92,9 @@ mod tests {
     fn session_announce_round_trip() {
         let sa = SessionAnnounce {
             session_id: Uuid::new_v4(),
-            message: "sign this".into(),
+            serial_number: 42,
+            timestamp: 1_700_000_000,
+            file_hash: "a".repeat(64),
             k: 2,
             n: 3,
         };

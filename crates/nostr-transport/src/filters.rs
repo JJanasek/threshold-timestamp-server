@@ -206,7 +206,9 @@ mod tests {
         // Session announce → should match
         let sa = SessionAnnounce {
             session_id: Uuid::new_v4(),
-            message: "m".into(),
+            serial_number: 1,
+            timestamp: 1_700_000_000,
+            file_hash: "0".repeat(64),
             k: 2,
             n: 3,
         };

@@ -297,7 +297,9 @@ mod tests {
         let signer = Keys::generate();
         let payload = SessionAnnounce {
             session_id: Uuid::new_v4(),
-            message: "sign this please".into(),
+            serial_number: 1,
+            timestamp: 1_700_000_000,
+            file_hash: "b".repeat(64),
             k: 3,
             n: 5,
         };
@@ -396,7 +398,9 @@ mod tests {
         let signer = Keys::generate();
         let payload = SessionAnnounce {
             session_id: Uuid::new_v4(),
-            message: "test".into(),
+            serial_number: 2,
+            timestamp: 1_700_000_000,
+            file_hash: "c".repeat(64),
             k: 2,
             n: 3,
         };
@@ -424,7 +428,9 @@ mod tests {
 
         let payload = SessionAnnounce {
             session_id: Uuid::new_v4(),
-            message: "secret".into(),
+            serial_number: 3,
+            timestamp: 1_700_000_000,
+            file_hash: "d".repeat(64),
             k: 2,
             n: 3,
         };

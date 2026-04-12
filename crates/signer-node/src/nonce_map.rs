@@ -11,6 +11,9 @@ const CLEANUP_INTERVAL: Duration = Duration::from_secs(60);
 
 struct NonceEntry {
     nonce: Nonce,
+    /// The 32-byte message hash the signer committed to in Round 1.
+    /// Round 2 verifies the SigningPackage carries this same hash before signing.
+    expected_msg: [u8; 32],
     created_at: Instant,
 }
 
@@ -26,9 +29,9 @@ impl NonceMap {
         }
     }
 
-    /// Store a nonce for the given session. Returns `false` if a nonce for this
-    /// session already exists (duplicate rejection).
-    pub async fn insert(&self, session_id: Uuid, nonce: Nonce) -> bool {
+    /// Store a nonce together with the expected Round 2 message hash.
+    /// Returns `false` if a nonce for this session already exists (duplicate rejection).
+    pub async fn insert(&self, session_id: Uuid, nonce: Nonce, expected_msg: [u8; 32]) -> bool {
         let mut map = self.inner.write().await;
         if map.contains_key(&session_id) {
             return false;
@@ -37,6 +40,7 @@ impl NonceMap {
             session_id,
             NonceEntry {
                 nonce,
+                expected_msg,
                 created_at: Instant::now(),
             },
         );
@@ -44,13 +48,13 @@ impl NonceMap {
         true
     }
 
-    /// Remove and return the nonce for the given session.
+    /// Remove and return the nonce and expected message hash for the given session.
     /// Guarantees single-use: a second call with the same session_id returns `None`.
-    pub async fn take(&self, session_id: &Uuid) -> Option<Nonce> {
+    pub async fn take(&self, session_id: &Uuid) -> Option<(Nonce, [u8; 32])> {
         let mut map = self.inner.write().await;
         let result = map.remove(session_id);
         tracing::debug!(%session_id, found = result.is_some(), "nonce take");
-        result.map(|entry| entry.nonce)
+        result.map(|entry| (entry.nonce, entry.expected_msg))
     }
 
     /// Returns the number of active nonces.

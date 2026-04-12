@@ -110,10 +110,14 @@ async fn run_session_inner(
         SessionHandle { event_tx: tx },
     );
 
-    // 5. Round 1 out: Send SessionAnnounce to each signer
+    // 5. Round 1 out: Send SessionAnnounce to each signer.
+    //    Signers recompute the message hash from (serial, timestamp, file_hash)
+    //    and validate the timestamp against their own clock before committing.
     let announce = SessionAnnounce {
         session_id,
-        message: hex::encode(message_hash),
+        serial_number: token.serial_number,
+        timestamp: token.timestamp,
+        file_hash: token.file_hash.clone(),
         k: k as usize,
         n: n as usize,
     };
